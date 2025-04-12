@@ -1202,7 +1202,7 @@ waitproc(int block, int *status)
 	do {
 		gotsigchld = 0;
 		do
-			err = wait3(status, flags, NULL);
+			err = wait4(-1, status, flags, NULL);
 		while (err < 0 && errno == EINTR);
 
 		if (err || (err = -!block))
