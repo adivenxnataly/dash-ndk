@@ -1989,7 +1989,7 @@ static int pmatch(char *pattern, const char *string)
 					p++;
 					if (*p == (char)CTLESC)
 						p++;
-					else if (*p == CTLMBCHAR) {
+					else if (*p == (char)CTLMBCHAR) {
 						mbp = mbnext(p);
 						p += mbp & 0xff;
 						p += mbp >> 8;
