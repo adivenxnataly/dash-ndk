@@ -1,0 +1,88 @@
+name: Build Dash for Android
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm64-v8a, armeabi-v7a]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    - name: Set Up NDK r27c
+      run: |
+        wget -q https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+        unzip -q android-ndk-r27c-linux.zip
+        echo "NDK_HOME=$(pwd)/android-ndk-r27c" >> $GITHUB_ENV
+
+    - name: Patch for Android
+      run: |
+        sed -i 's/^CFLAGS=.*/& -fPIE -Wa,--noexecstack -Wl,--no-warn-mismatch -Wl,--pack-dyn-relocs=android+relr/' configure.ac
+
+    - name: Generate Configure
+      run: |
+        autoreconf -fi
+
+    - name: Build for ${{ matrix.arch }}
+      run: |
+        case "${{ matrix.arch }}" in
+          arm64-v8a)
+            TARGET=aarch64-linux-android
+            EXTRA_FLAGS=""
+            ;;
+          armeabi-v7a)
+            TARGET=armv7a-linux-androideabi
+            EXTRA_FLAGS="-march=armv7-a -mfloat-abi=softfp -mfpu=neon"
+            ;;
+        esac
+
+        export API=29
+        export CC=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/${TARGET}${API}-clang
+        export CFLAGS="-static -fPIE -Oz -D__ANDROID__ -Wno-implicit-function-declaration $EXTRA_FLAGS"
+        export LDFLAGS="-Wl,--pack-dyn-relocs=android+relr"
+        
+        ./configure --host=$TARGET
+        make -j$(nproc)
+
+        mkdir -p libs/${{ matrix.arch }}
+        $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip src/dash
+        cp src/dash libs/${{ matrix.arch }}/
+
+    - name: Verify
+      run: |
+        $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf -h libs/${{ matrix.arch }}/dash | grep 'Machine\|Class'
+
+    - name: Save binary artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.arch }}
+        path: libs/${{ matrix.arch }}/dash
+
+  package:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - name: Download all binaries
+      uses: actions/download-artifact@v4
+      with:
+        path: all-libs
+        
+    - name: Repackage
+      run: |
+        mkdir -p libs/armeabi-v7a
+        mkdir -p libs/arm64-v8a
+        mv all-libs/armeabi-v7a/dash libs/armeabi-v7a/dash
+        mv all-libs/arm64-v8a/dash libs/arm64-v8a/dash
+        
+    - name: Upload final package
+      uses: actions/upload-artifact@v4
+      with:
+        name: dash-static
+        path: libs/
