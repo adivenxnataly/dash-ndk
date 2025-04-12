@@ -1478,7 +1478,7 @@ static void *opendir_interruptible(const char *pathname)
 
 	return opendir(pathname);
 }
-#else
+#elif !defined(__ANDROID__)
 #define GLOB_ALTDIRFUNC 0
 #endif
 
